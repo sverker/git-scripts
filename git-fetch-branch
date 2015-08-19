@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Fetch single remote branch
+if [ "$#" != 2 ]; then
+        echo
+        echo "Fetch single remote branch"
+        echo "Syntax: git-fetch-branch <remote> <branch>"
+        echo
+        exit 1
+fi
+
+
+git fetch --no-tags $1 +$2:refs/remotes/$1/$2

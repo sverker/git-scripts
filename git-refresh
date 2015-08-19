@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# Refresh tracking branch from its remote repo
+
+while (( "$#" )); do
+
+    if [ "$1" == "-q" ]; then
+	query_only="yes"
+    elif [ "$1" == "-f" ]; then
+	force_it="yes"
+    elif [[ "$1" != -* ]] && [[ $l_branch == "" ]]; then
+	l_branch="$1"
+    else
+	echo "Unexpected argument: $1"
+	echo
+	echo "Refresh tracking branch from its repo."
+	echo "Syntax: git-refresh [-f] [branch]"
+	echo "        git-refresh -q [branch]"
+	echo
+	echo "If no branch is given, current branch is used."
+	echo "-f     Force. Otherwise only fast-forward."
+	echo "-q     Query tracked remote branch."
+	exit 1
+    fi
+    
+    shift
+done
+
+curr_branch="$(git rev-parse --symbolic-full-name --abbrev-ref HEAD)"
+
+if [[ "$l_branch" = "" ]]; then
+    l_branch=$curr_branch
+fi
+if [ "$l_branch" = "HEAD" ]; then
+    echo "ERROR: Detached head"
+    exit 1
+fi
+
+
+remote="$(git config branch.$l_branch.remote)"
+
+if [ "$remote" == "" ]; then
+    echo "ERROR: Branch '$l_branch' is not tracking"
+    exit 1
+fi
+
+full_r_branch="$(git config branch.$l_branch.merge)"
+
+if [[ $full_r_branch =~ refs/heads/(.+) ]]; then
+    r_branch=${BASH_REMATCH[1]}
+    echo "'$l_branch' is tracking '$r_branch' at '$remote'"
+else
+    echo "ERROR: Unknown remote branch format: '$full_r_branch'"
+    exit 1
+fi
+
+if [ "$query_only" == "yes" ] ; then exit 1 ; fi
+
+echo "git fetch $remote $r_branch"
+if ! git fetch $remote +$r_branch:refs/remotes/$remote/$r_branch ; then
+    echo "ERROR: Failed to fetch '$remote/$r_branch'"
+    exit 1
+fi
+
+if [[ "$l_branch" == "$curr_branch" ]]; then
+    if [ "$force_it" == "yes" ]; then
+	git reset --hard refs/remotes/$remote/$r_branch || exit 1
+	method="reset --hard"
+    else
+	git merge --ff-only refs/remotes/$remote/$r_branch || exit 1
+	method="fast-forward"
+    fi
+else
+    # Other branch
+    if [[ "$force_it" != "yes" ]]; then
+	if ! git-is-merged $l_branch refs/remotes/$remote/$r_branch > /dev/null ; then
+	    echo "ERROR: Cannot fast-forward '$l_branch' to '$remote/$r_branch'"
+	    exit 1
+	fi
+    fi
+    git branch -f $l_branch refs/remotes/$remote/$r_branch || exit 1
+    method="branch -f"
+fi
+
+echo
+echo "Branch '$l_branch' was successfully refreshed from '$remote/$r_branch' (by $method)"
+echo
+
+
+
+

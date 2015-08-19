@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+if [ "$#" != 2 ]; then
+        echo
+        echo "Is <needle> commit merged into <haystack> commit?"
+        echo "Syntax: git-is-merged <needle> <haystask>"
+        echo
+        exit 1
+fi
+
+BASE=`git merge-base $1 $2` || exit 2
+NEEDLE=`git rev-parse $1` || exit 3
+
+if [ "$BASE" = "$NEEDLE" ]; then
+   echo "YES, $1 is merged into $2"
+   exit 0
+else
+   echo "NO, $1 is NOT merged into $2"
+   exit 1
+fi

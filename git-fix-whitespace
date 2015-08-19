@@ -1,0 +1,43 @@
+#!/bin/bash
+usage(){
+cat << EOF
+git-fix-whitespace - Fixes the whitespace issues that 'git-diff --check' complains about.
+Usage:
+    $0 --all
+Synopsis:
+    Fix all whitespace errors on modified lines in both staged and working files
+EOF
+}
+
+apply_fail(){
+    echo "Failed to apply patch $PATCH"
+    echo "ERROR = $1"
+    exit $1
+}
+
+if [[ $# != 1 || "$1" != "--all" ]]; then
+    usage
+    exit
+fi
+
+EXCLUDE=--exclude=*.beam
+
+if git diff --check HEAD > /dev/null; then
+    echo "No whitespace errors in work dir"
+else
+    PATCH_w=$(mktemp ${0##*/}.patch.XXXXXX)
+    git diff --no-ext-diff HEAD > $PATCH_w
+    git apply -R $EXCLUDE $PATCH_w || apply_fail 1
+    git apply --whitespace=fix $EXCLUDE $PATCH_w || apply_fail 2
+fi
+
+if git diff --check --cached HEAD > /dev/null; then
+    echo "No whitespace errors in staged files"
+else
+    PATCH_c=$(mktemp ${0##*/}.patch.XXXXXX)
+    git diff --no-ext-diff --cached HEAD > $PATCH_c
+    git apply --cached -R $EXCLUDE $PATCH_c || apply_fail 3
+    git apply --cached --whitespace=fix $EXCLUDE $PATCH_c || apply_fail 4
+fi
+
+rm $PATCH_c $PATCH_w
