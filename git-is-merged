@@ -9,7 +9,7 @@ if [ "$#" != 2 ]; then
 fi
 
 BASE=`git merge-base $1 $2` || exit 2
-NEEDLE=`git rev-parse $1` || exit 3
+NEEDLE=`git rev-list -1 $1` || exit 3
 
 if [ "$BASE" = "$NEEDLE" ]; then
    echo "YES, $1 is merged into $2"
