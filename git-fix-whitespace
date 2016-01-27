@@ -22,22 +22,31 @@ fi
 
 EXCLUDE=--exclude=*.beam
 
-if git diff --check HEAD > /dev/null; then
+PATCH_w_undo=$(mktemp ${0##*/}.patch.w.undo.XXXXXX)
+PATCH_w_redo=$(mktemp ${0##*/}.patch.w.redo.XXXXXX)
+
+git diff --no-ext-diff HEAD > $PATCH_w_undo
+git diff --no-ext-diff --ignore-space-at-eol HEAD > $PATCH_w_redo
+
+if git diff --check HEAD > /dev/null && diff -q $PATCH_w_undo $PATCH_w_redo > /dev/null; then
     echo "No whitespace errors in work dir"
 else
-    PATCH_w=$(mktemp ${0##*/}.patch.XXXXXX)
-    git diff --no-ext-diff HEAD > $PATCH_w
-    git apply -R $EXCLUDE $PATCH_w || apply_fail 1
-    git apply --whitespace=fix $EXCLUDE $PATCH_w || apply_fail 2
+    git apply -R $EXCLUDE $PATCH_w_undo || apply_fail 1
+    git apply --ignore-whitespace --whitespace=fix $EXCLUDE $PATCH_w_redo || apply_fail 2
 fi
 
-if git diff --check --cached HEAD > /dev/null; then
+PATCH_c_undo=$(mktemp ${0##*/}.patch.c.undo.XXXXXX)
+PATCH_c_redo=$(mktemp ${0##*/}.patch.c.redo.XXXXXX)
+
+git diff --no-ext-diff --cached HEAD > $PATCH_c_undo
+git diff --no-ext-diff --cached --ignore-space-at-eol HEAD > $PATCH_c_redo
+
+if git diff --check --cached HEAD > /dev/null && diff -q $PATCH_c_undo $PATCH_c_redo > /dev/null; then
     echo "No whitespace errors in staged files"
 else
-    PATCH_c=$(mktemp ${0##*/}.patch.XXXXXX)
-    git diff --no-ext-diff --cached HEAD > $PATCH_c
-    git apply --cached -R $EXCLUDE $PATCH_c || apply_fail 3
-    git apply --cached --whitespace=fix $EXCLUDE $PATCH_c || apply_fail 4
+    git apply --cached -R $EXCLUDE $PATCH_c_undo || apply_fail 3
+    git apply --cached --ignore-whitespace --whitespace=fix $EXCLUDE $PATCH_c_redo || apply_fail 4
 fi
 
-rm $PATCH_c $PATCH_w
+rm $PATCH_c_undo $PATCH_c_redo
+rm $PATCH_w_undo $PATCH_w_redo
