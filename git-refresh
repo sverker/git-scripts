@@ -57,7 +57,7 @@ fi
 if [ "$query_only" == "yes" ] ; then exit 1 ; fi
 
 echo "git fetch $remote $r_branch"
-if ! git fetch $remote +$r_branch:refs/remotes/$remote/$r_branch ; then
+if ! git fetch --no-tags $remote +$r_branch:refs/remotes/$remote/$r_branch ; then
     echo "ERROR: Failed to fetch '$remote/$r_branch'"
     exit 1
 fi

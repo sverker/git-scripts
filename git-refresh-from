@@ -17,7 +17,7 @@ if [ "$branch_name" = "HEAD" ]; then
     exit 1
 else
     echo "git fetch $1 $branch_name"
-    (git fetch $1 +$branch_name:refs/remotes/$1/$branch_name &&
+    (git fetch --no-tags $1 +$branch_name:refs/remotes/$1/$branch_name &&
      git merge --ff-only refs/remotes/$1/$branch_name &&
      echo "Branch $branch_name was successfully refreshed from $1")
 fi
