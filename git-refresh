@@ -72,14 +72,16 @@ if [[ "$l_branch" == "$curr_branch" ]]; then
     fi
 else
     # Other branch
-    if [[ "$force_it" != "yes" ]]; then
-	if ! git-is-merged $l_branch refs/remotes/$remote/$r_branch > /dev/null ; then
+    if ! git-is-merged $l_branch refs/remotes/$remote/$r_branch > /dev/null ; then
+	if [[ "$force_it" != "yes" ]]; then
 	    echo "ERROR: Cannot fast-forward '$l_branch' to '$remote/$r_branch'"
 	    exit 1
 	fi
+	method="branch -f"
+    else
+	method="fast-forward"
     fi
     git branch -f $l_branch refs/remotes/$remote/$r_branch || exit 1
-    method="branch -f"
 fi
 
 echo
