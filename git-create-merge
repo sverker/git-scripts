@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+
+force_ours="no"
+force_theirs="no"
+
+while (( "$#" )); do
+
+    if [ "$1" == "-f1" ]; then
+	force_ours="yes"
+    elif [ "$1" == "-f2" ]; then
+	force_theirs="yes"
+    else
+	break;
+    fi
+
+    shift
+done
+
+if [ "$#" != 2 ]; then
+        echo
+        echo "Create a merge commit for current branch"
+	echo "with current content (staged and commited)"
+	echo "and specified parents."
+	echo
+        echo "Syntax: git-create-merge <ours-parent> <theirs-parent>"
+        echo
+        exit 1
+fi
+
+if ! git rev-parse $1 >& /dev/null
+then
+    echo
+    echo "ERROR: First argument '$1' is not a known commit"
+    echo
+    exit 1
+fi
+
+if ! git rev-parse $2 >& /dev/null
+then
+    echo
+    echo "ERROR: Second argument '$2' is not a known commit"
+    echo
+    exit 1
+fi
+
+branch="$(git rev-parse --symbolic-full-name --abbrev-ref HEAD)"
+
+if [ "$branch" = "HEAD" ]; then
+    echo
+    echo "ERROR: Detached head"
+    echo
+    exit 1
+fi
+
+if [ "$force_ours" != "yes" ] && ! git merge-base --is-ancestor $1 $branch; then
+   echo
+   echo "ERROR: Proposed first parent '$1' is not reachable from '$branch'"
+   echo "       Override with option -f1"
+   echo
+   exit 1
+fi
+
+if [ "$force_theirs" != "yes" ] && ! git merge-base --is-ancestor $2 $branch; then
+   echo
+   echo "ERROR: Proposed second parent '$2' is not reachable from '$branch'"
+   echo "       Override with option -f2"
+   echo
+   exit 1
+fi
+
+git reset --soft $1
+git update-ref MERGE_HEAD $2
+git commit --edit -m "Merge '$2' into '$branch'" -m "from '$1'"

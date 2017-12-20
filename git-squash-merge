@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+
+run() {
+    cmd=
+    while [ $# -gt 0 ]; do
+	cmd="$cmd $1"
+	shift
+    done
+    echo $cmd
+    eval $cmd
+    if [ $? -ne 0 ]; then
+	echo
+	echo "ERROR: '$cmd' failed!"
+	echo
+	exit 1
+    fi
+}
+
+if [ "$#" != 1 ]; then
+    echo
+    echo "Convert merge commit at HEAD into a single merge commit"
+    echo "on top of <onto-commit> (by squashing all commits between HEAD and <onto-commit>)."
+    echo
+    echo "Syntax: git-squash-merge <onto-commit>"
+    echo
+    exit 1
+fi
+
+if ! git rev-parse $1 >& /dev/null
+then
+    echo
+    echo "ERROR: Argument '$1' is not a known commit"
+    echo
+    exit 1
+fi
+
+onto=$1
+
+HEAD1=$(git rev-parse HEAD^1)
+HEAD2=$(git rev-parse HEAD^2)
+
+if [ $? -ne 0 ]; then
+    echo
+    echo "ERROR: HEAD is not a merge commit"
+    echo
+    exit 1
+fi
+
+if git rev-parse HEAD^3 >& /dev/null; then
+    echo
+    echo "ERROR: HEAD has more than 2 parents"
+    echo
+    exit 1
+fi
+
+if git merge-base --is-ancestor $onto $HEAD1; then
+    if git merge-base --is-ancestor $onto $HEAD2; then
+        echo
+	echo "ERROR: '$onto' is reachable from both HEAD^1 and HEAD^2."
+	echo "       Don't know what to do."
+	echo
+	exit 1
+    fi
+
+    #git-create-merge $onto $HEAD2
+    run git reset --soft $onto
+    run git update-ref MERGE_HEAD $HEAD2
+    run git commit --reedit-message=$HEAD1
+
+elif git merge-base --is-ancestor $onto $HEAD2; then
+
+    #git-create-merge $onto $HEAD1
+    run git reset --soft $onto
+    run git update-ref MERGE_HEAD $HEAD1
+    run git commit --reedit-message=$HEAD2
+fi
