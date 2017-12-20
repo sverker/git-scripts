@@ -73,4 +73,9 @@ elif git merge-base --is-ancestor $onto $HEAD2; then
     run git reset --soft $onto
     run git update-ref MERGE_HEAD $HEAD1
     run git commit --reedit-message=$HEAD2
+else
+    echo
+    echo "ERROR: '$onto' is not reachable from either HEAD^1 or HEAD^2."
+    echo
+    exit 1
 fi
