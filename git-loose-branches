@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# List all local branches NOT merged to master
+# and NOT pushed to origin.
+
+for x in `git branch --no-merged master | sed 's/^\*//g'`
+do
+    if [ `git rev-parse refs/heads/$x` != `git rev-parse remotes/origin/$x 2> /dev/null` ]
+    then
+	echo "$x"
+    fi
+done
