@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+# Delete branches merged to master
+
+local="no"
+remote="no"
+help="yes"
+
+while (( "$#" )); do
+
+    if [ "$1" == "-l" ]; then
+	local="yes"
+	help="no"
+	shift
+    elif [ "$1" == "-r" ] && [ x"$2" != x ]; then
+	remote="$2"
+	help="no"
+	shift 2
+    else
+	help="yes"
+	break;
+    fi
+done
+
+if [ $help == "yes" ]; then
+    echo
+    echo "Delete branches merged to master"
+    echo
+    echo "Syntax: git-delete-merged-branches [-l] [-r remote]"
+    echo
+    echo "-l           Delete local branches"
+    echo "-r <remote>  Delete and push remote branches of <remote>"
+    echo
+fi
+
+
+if [ $local == "yes" ]; then    
+    for x in `git branch --merged master | sed 's/^\*//g'`
+    do
+	case "$x" in
+	    master | maint | maint-[0-9][0-9])
+		echo "Skipping $x"
+		;;
+	    *)
+		git branch -D $x
+		;;
+	esac
+    done
+fi
+
+if [ $remote != "no" ]; then    
+    for x in `git branch -r --merged master | grep "^[[:space:]]*$remote/"`
+    do
+	branch=${x#$remote/}
+	case $branch in
+	    master | maint | maint-[0-9][0-9])
+		echo "Skipping $x"
+		;;
+	    *)
+		echo "Deleting remote branch $x"
+		if ! git push $remote :$branch; then
+		    # Branch did probably not exist at $remote
+		    # Delete local remote-tracking branch
+		    git branch -rD $x
+		fi
+		;;
+	esac
+    done
+fi
