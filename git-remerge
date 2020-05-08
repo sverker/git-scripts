@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+
+run() {
+    cmd=
+    while [ $# -gt 0 ]; do
+	cmd="$cmd $1"
+	shift
+    done
+    echo $cmd
+    eval $cmd
+    if [ $? -ne 0 ]; then
+	echo
+	echo "ERROR: '$cmd' failed!"
+	echo
+	exit 1
+    fi
+}
+
+if [ "$#" != 1 ]; then
+    echo
+    echo "Rebase current branch on <onto-commit> while keeping merge commits."
+    echo
+    echo "Syntax: git-remerge <onto-commit>"
+    echo
+    exit 1
+fi
+
+if ! git rev-parse $1 >& /dev/null; then
+    echo
+    echo "ERROR: Argument '$1' is not a known commit"
+    echo
+    exit 1
+fi
+
+curr_branch="$(git rev-parse --symbolic-full-name --abbrev-ref HEAD)"
+
+if [ "$curr_branch" = "HEAD" ]; then
+    echo "ERROR: Detached head"
+    exit 1
+fi
+
+onto=$1
+
+if git merge-base --is-ancestor HEAD $onto; then
+    echo
+    echo "ERROR: '$curr_branch' is already reachable from '$onto'. Nothing to remerge."
+    echo
+    exit 1
+fi
+
+if git merge-base --is-ancestor $onto HEAD; then
+    echo
+    echo "ERROR: '$onto' is reachable from '$curr_branch'. Nothing to remerge."
+    echo
+    exit 1
+fi
+
+if ! git diff --quiet --exit-code; then
+    echo "Cannot remerge: You have unstaged changes."
+    echo "Please commit or stash them."
+    exit 1
+fi
+if ! git diff --cached --quiet --exit-code; then
+    echo "Cannot remerge: Your index contains uncommitted changes."
+    echo "Please commit or stash them."
+    exit 1
+fi
+
+git branch -D remerge/tmp1 >& /dev/null
+git branch -D remerge/tmp2 >& /dev/null
+git branch -D remerge/child1 >& /dev/null
+
+#
+# Loop down to find the common ancestor
+#
+parent="$(git rev-parse HEAD)"
+old_commits=$parent
+while true; do
+    echo "Commit to remerge: '$parent'"
+    
+    child1=$(git rev-parse $parent^1)
+    if git merge-base --is-ancestor $child1 $onto; then
+	echo "Found remerge base '$child1'"
+	break;
+    fi
+    
+    old_commits="$child1 $old_commits"
+    parent=$child1
+done
+
+#
+# Loop up and do new merge commits
+#
+run git checkout -b remerge/tmp1 $onto
+
+for sha in $old_commits; do
+    echo "Remerging commit $sha ..."
+    run git merge --no-commit $sha
+    run git commit --reuse-message=$sha
+
+    tmp_commits="$tmp_commits $(git rev-parse HEAD)"
+done
+
+#
+# Loop up through new merge commits and fix children
+#
+run git checkout -b remerge/tmp2
+child1=$onto
+for sha in $tmp_commits; do
+    echo "Re-childing commit $sha ..."
+    run git branch -f remerge/child1 $child1
+    run git reset --hard $sha
+    run git reset --soft remerge/child1
+    run git update-ref MERGE_HEAD $sha^2^2
+    run git commit --reuse-message=$sha
+    child1="$(git rev-parse HEAD)"
+done
+
+run git branch -f $curr_branch
+run git checkout $curr_branch
+
+git branch -D remerge/tmp1 >& /dev/null
+git branch -D remerge/tmp2 >& /dev/null
+git branch -D remerge/child1 >& /dev/null
