@@ -111,7 +111,12 @@ for sha in $tmp_commits; do
     run git branch -f remerge/child1 $child1
     run git reset --hard $sha
     run git reset --soft remerge/child1
-    run git update-ref MERGE_HEAD $sha^2^2
+    if git rev-parse --verify --quiet $sha^2 >/dev/null; then
+	# A merge commit. Retain second parent of original merge commit.
+	run git update-ref MERGE_HEAD $sha^2^2
+
+	#else A normal commit. Omit second parent
+    fi
     run git commit --reuse-message=$sha
     child1="$(git rev-parse HEAD)"
 done
