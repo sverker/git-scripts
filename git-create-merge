@@ -27,7 +27,8 @@ if [ "$#" != 2 ]; then
         exit 1
 fi
 
-if ! git rev-parse $1 >& /dev/null
+ours_sha="$(git rev-parse --verify --quiet $1)"
+if [ $? -ne 0 ]
 then
     echo
     echo "ERROR: First argument '$1' is not a known commit"
@@ -35,10 +36,18 @@ then
     exit 1
 fi
 
-if ! git rev-parse $2 >& /dev/null
+theirs_sha="$(git rev-parse --verify --quiet $2)"
+if [ $? -ne 0 ]
 then
     echo
     echo "ERROR: Second argument '$2' is not a known commit"
+    echo
+    exit 1
+fi
+
+if [ "$ours_sha" = "$theirs_sha" ]; then
+    echo
+    echo "ERROR: Arguments '$1' and '$2' are same commit $ours_sha"
     echo
     exit 1
 fi
@@ -68,6 +77,6 @@ if [ "$force_theirs" != "yes" ] && ! git merge-base --is-ancestor $2 $branch; th
    exit 1
 fi
 
-git reset --soft $1
-git update-ref MERGE_HEAD $2
-git commit --edit -m "Merge '$2' into '$branch'" -m "from '$1'"
+git reset --soft $ours_sha
+git update-ref MERGE_HEAD $theirs_sha
+git commit --edit -m "Merge '$2' into '$branch'"
