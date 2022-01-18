@@ -1,0 +1,320 @@
+#!/bin/sh
+
+#
+# %CopyrightBegin%
+#
+# Copyright Ericsson AB 2022. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# %CopyrightEnd%
+
+#
+# Author: Rickard Green <rickard@erlang.org>
+#
+# Based on the git-create-merge script made by Sverker Eriksson
+# <sverker@erlang.org>.
+#
+
+silent=true
+log=false
+force=false
+check_only=false
+
+print_usage () {
+cat <<EOF
+  Usage:
+   \$ $prog [-c|--check-only] [-f|--force] [-h|--help] \\
+         [-v|--verbose] [-l|--log] <ours> <theirs>
+
+  Options:
+   -c|--check-only           -- Only preform sanity checks. Do not perform
+                                any changes.
+   -f|--force                -- Skip a lot of sanity tests on relations
+                                between HEAD, <ours> and <theirs> (see
+                                below). Note that this might cause weird
+                                results unless you know what you are doing.
+   -h|--help                 -- Print help information.
+   -l|--log                  -- Add descriptions of merged commits in commit
+                                message.
+   -v|--verbose              -- Print information about what is being done.
+   <ours>                    -- Commit-ish identifying the commit which
+                                <theirs> will be merged onto.
+   <theirs>                  -- Commit-ish identifying the commit which will
+                                be merged onto <ours>.
+
+  Fixup a merge. A merge commit containing the same content as the current
+  HEAD commit will be created with <ours> as first parent commit and <theirs>
+  as second parent commit. If the old HEAD commit was the top commit of a
+  checked out branch, the new HEAD will be the new top commit of the checked
+  out branch as well.
+
+  When executing '$prog' the following must be true:
+  * The <ours> commit must be an ancestor of the HEAD commit.
+  * The <ours> commit must not be the same commit as the <theirs> commit nor
+    an ancestor commit of the <theirs> commit.
+
+  The following must also be true unless the --force argument has been passed:
+  * The merge commit closest to the HEAD commit, which is either the HEAD
+    commit itself or an ancestor commit of the HEAD commit, must be a two way
+    merge commit (octopus merge commits are not supported). In the following,
+    we call this merge commit CMC (for Closest Merge Commit).
+  * The <ours> commit must be either the CMC^1 commit or an ancestor commit
+    of the CMC^1 commit.
+  * The content of the <theirs> commit must be exactly the same as the
+    content of the CMC^2 commit.
+
+  If the above is not true, '$prog' will fail before performing any
+  changes.
+
+EOF
+}
+
+print_usecases () {
+cat <<EOF
+  Typical use-cases:
+
+  * You have completed a merge, but you happened to solve a merge conflict
+    the wrong way. Instead of resetting the branch that you just merged into
+    to its state before the merge and redo the merge, fix the issue and commit
+    it as a commit following the merge commit, then squash the fix into a new
+    merge commit using '$prog'.
+
+  * You have completed a merge, but you need to fix an issue in the branch
+    you merged from. Commit a fix in the branch you merged from, and merge
+    that fix as well on top of the merge you originally did. You now have
+    two merge commits which you might not want to have.
+
+    Fix up the branch you merged from, by rebasing or squashing, etc,
+    without changing the content of the branch. Then squash the two merge
+    commits using '$prog' identifying the fixed up version of the
+    branch you merged from as <theirs> commit.
+
+EOF
+}
+
+help () {
+    print_usage
+    print_usecases
+    exit 0
+}
+
+error () {
+    [ $silent = true ] || printf "error\n\n"
+    echo "ERROR: $1\n" 1>&2
+    exit 1
+}
+
+usage () {
+    [ $silent = true ] || printf "error\n\n"
+    echo "ERROR: $1\n" 1>&2
+    print_usage 1>&2
+    exit 1
+}
+
+progress () {
+    [ $silent = true ] || printf "$1... "
+}
+
+ok () {
+    [ $silent = true ] || {
+        if [ $# -eq 0 ]; then
+            printf "ok\n"
+        else
+            printf "$1\n"
+        fi
+    }
+}
+
+# Here we go...
+
+prog=`basename $0`
+ours=
+theirs=
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -c|--check-only)
+            check_only=true;;
+        -h|--help)
+            help;;
+        -v|--verbose)
+            silent=false;;
+        -s|--silent)
+            silent=true;;
+        -l|--log)
+            log=true;;
+        -n|--no-log)
+            log=false;;
+        -f|--force)
+            force=true;;
+        -*)
+            usage "Invalid option: $1";;
+        *)
+            if [ "$ours" = "" ]; then
+                ours="$1"
+            elif [ "$theirs" = "" ]; then
+                theirs="$1"
+            else
+                usage "Invalid argument: $1"
+            fi;;
+    esac
+    shift
+done
+
+[ "$ours" != "" ] || usage "Missing <ours> argument"
+[ "$theirs" != "" ] || usage "Missing <theirs> argument"
+
+progress "Checking that we are in a git repository"
+git rev-parse >/dev/null 2>&1 || {
+    usage "Current working directory is not in a git repository"
+}
+ok
+
+progress "Checking that <ours> is a commit-ish"
+git rev-parse -verify "${ours}^{commit}" 2>/dev/null 1>&2 || {
+    usage "<ours> is not a commit-ish"
+}
+ok
+
+progress "Checking that <theirs> is a commit-ish"
+git rev-parse --verify "${theirs}^{commit}" 2>/dev/null 1>&2 || {
+    usage "<theirs> is not a commit-ish"
+}
+ok
+
+theirs_type=commit
+progress "Checking the type of the <theirs> commit-ish"
+if git rev-parse --verify "${theirs}^{tag}" 2>/dev/null 1>&2; then
+    theirs_type=tag
+else
+    theirs_branch=`git rev-parse --abbrev-ref "${theirs}" 2>&1` || {
+        error "'git rev-parse --abbrev-ref ${theirs}' failed: theirs_branch"
+    }
+    [ "$theirs_branch" = "" ] || theirs_type=branch
+fi
+ok "$theirs_type"
+
+progress "Checking that <ours> is an ancestor of HEAD"
+git merge-base --is-ancestor "$ours" HEAD || {
+    usage "<ours> is not an ancestor of HEAD"
+}
+
+head_sha=`git rev-parse --verify HEAD 2>/dev/null` || {
+    error "Failed to retreive sha of HEAD"
+}
+
+ours_sha=`git rev-parse --verify "$ours" 2>/dev/null` || {
+    error "Failed to retreive sha of $ours"
+}
+
+[ "$head_sha" != "$ours_sha" ] || {
+    usage "<ours> and HEAD is the same commit"
+}
+
+ok
+
+progress "Checking that <ours> is not an ancestor of <theirs>"
+! git merge-base --is-ancestor "$ours" "$theirs" || {
+    usage "<ours> is an ancestor of <theirs>"
+}
+ok
+
+if [ $force = false ]; then
+
+    progress "Searching for the closest ancestor of HEAD being a merge commit"
+
+    merge_commit="HEAD"
+    head_offset=0
+    old_theirs=`git rev-parse --verify HEAD^2 2>/dev/null`
+    while [ $? -ne 0 ]; do
+        head_offset=`expr $head_offset + 1`
+        merge_commit="HEAD~${head_offset}"
+        old_theirs=`git rev-parse --verify ${merge_commit}^2 2>/dev/null`
+    done
+
+    ok "$merge_commit"
+
+    progress "Checking that $merge_commit is not an octopus merge commit"
+    ! git rev-parse --verify ${merge_commit}^3 2>/dev/null 1>&2 || {
+        usage "${merge_commit} is an octopus merge commit"
+    }
+    ok
+
+    progress "Checking that <ours> is an ancestor of ${merge_commit}^1"
+    git merge-base --is-ancestor "$ours" ${merge_commit}^1 || {
+        usage "<ours> is not an ancestor of ${merge_commit}^1"
+    }
+    ok
+
+    progress "Checking that <theirs> has the same content as ${merge_commit}^2"
+    git diff --quiet --exit-code "$theirs" "$old_theirs" || {
+        usage "<theirs> does not have the same content as ${merge_commit}^2"
+    }
+    ok
+
+fi
+
+progress "Checking current branch name"
+branch=`git rev-parse --abbrev-ref HEAD` || {
+    error "Failed to retreive current branch name"
+}
+if [ "$branch" = "HEAD" ]; then
+    ok "none; detached HEAD"
+else
+    ok "$branch"
+fi
+
+subject="Merge $theirs_type '$theirs' into $branch"
+
+if [ "$log" = "false" ]; then
+    message="$subject"
+else
+    progress "Fetching commit messages of commits being merged"
+    commits=`git rev-list --no-merges "$theirs" "^$ours" 2>&1` || {
+        error "'git rev-list --no-merges $theirs ^$ours' failed: $commits"
+    }
+
+    commits_info=
+    for commit in $commits; do
+        cinfo=`git log -n 1 --format="%s" "$commit" 2>&1` || {
+            error "'git log -n 1 --format=\"%s\" $commit' failed: $cinfo"
+        }
+        commits_info="$commits_info\n  $cinfo"
+    done
+    ok
+
+    message="$subject\n\n* $theirs:$commits_info"
+fi
+
+[ $silent = true ] || {
+    echo "\nCommit message:\n\n$message\n"
+}
+
+[ $check_only = false ] || exit 0
+
+progress "Commit fixed up merge"
+
+res=`git reset --soft "$ours" 2>&1` || {
+    error "'git reset --soft $ours' failed: $res"
+}
+res=`git update-ref MERGE_HEAD "$theirs" 2>&1` || {
+    error "'git update-ref MERGE_HEAD $theirs' failed: $res"
+}
+res=`echo "$message" | git commit --no-edit --no-verify -F - 2>&1` || {
+    error "git commit --no-edit --no-verify -F -' failed: $res"
+}
+
+ok
+
+exit 0
