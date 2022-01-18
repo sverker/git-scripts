@@ -218,6 +218,10 @@ ours_sha=`git rev-parse --verify "$ours" 2>/dev/null` || {
     error "Failed to retreive sha of $ours"
 }
 
+theirs_sha=`git rev-parse --verify "$theirs" 2>/dev/null` || {
+    error "Failed to retreive sha of $theirs"
+}
+
 [ "$head_sha" != "$ours_sha" ] || {
     usage "<ours> and HEAD is the same commit"
 }
@@ -305,11 +309,11 @@ fi
 
 progress "Commit fixed up merge"
 
-res=`git reset --soft "$ours" 2>&1` || {
-    error "'git reset --soft $ours' failed: $res"
+res=`git reset --soft "$ours_sha" 2>&1` || {
+    error "'git reset --soft $ours_sha' failed: $res"
 }
-res=`git update-ref MERGE_HEAD "$theirs" 2>&1` || {
-    error "'git update-ref MERGE_HEAD $theirs' failed: $res"
+res=`git update-ref MERGE_HEAD "$theirs_sha" 2>&1` || {
+    error "'git update-ref MERGE_HEAD $theirs_sha' failed: $res"
 }
 res=`echo "$message" | git commit --no-edit --no-verify -F - 2>&1` || {
     error "git commit --no-edit --no-verify -F -' failed: $res"
