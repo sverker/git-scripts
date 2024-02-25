@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+
+prog="$(basename $0)"
+
+if [ $# -gt 0 ]; then
+    cat <<EOF
+  Usage:
+   \$ $prog
+
+  Redo a merge after a failed attempt to push it due to
+  the tracked upstream branch being ahead.
+
+  Example:
+    (master)\$ git merge topic
+    (master)\$ git push upstream master
+    FAIL.
+    ! [rejected]         master -> master (non-fast-forward)
+
+    (master)\$ $prog
+    (master)\$ git push upstream master
+    Ok
+
+EOF
+    exit 1
+fi
+
+
+curr_branch="$(git rev-parse --symbolic-full-name --abbrev-ref HEAD)"
+
+if [ "$curr_branch" == "" ]; then
+    echo "$prog ERROR: No branch checked out. You are on a detached HEAD."
+    exit 1
+fi
+
+if ! git diff --quiet --exit-code; then
+    echo "$prog ERROR: Repo is dirty. You have unstaged changes."
+    exit 1
+fi
+
+if ! git diff --staged --quiet --exit-code HEAD; then
+    echo "$prog ERROR: Repo is dirty. You have staged changes."
+    exit 1
+fi
+
+remote_branch="$(git rev-parse --symbolic-full-name @{u} 2> /dev/null)"
+if [ $? -ne 0 -o "$remote_branch" == "" ]; then
+    echo "$prog ERROR: Branch '$curr_branch' is not tracking any remote branch."
+    exit 1
+fi
+echo "$prog: Using remote bransh '$remote_branch'"
+
+
+old_ours="$(git rev-parse --verify --quiet HEAD^1)"
+if [ $? -ne 0 -o "$old_ours" == "" ]; then
+    echo "$prog ERROR: HEAD does not even have a first parent???"
+    exit 1
+fi
+
+old_theirs="$(git rev-parse --verify --quiet HEAD^2)"
+if [ $? -ne 0 -o "$old_theirs" == "" ]; then
+    echo "$prog ERROR: HEAD is not a merge commit."
+    exit 1
+fi
+
+
+if ! git merge-base --is-ancestor $old_ours $remote_branch; then
+    echo "$prog ERROR: First parent HEAD^1 is not an ancestor of $remote_branch."
+    exit 1
+fi
+
+old_head="$(git rev-parse --verify --quiet HEAD)"
+if [ $? -ne 0 -o "$old_head" == "" ]; then
+    echo "$prog ERROR: Cannot rev-parse HEAD???"
+    exit 1
+fi
+
+if ! git merge --no-edit $remote_branch; then
+    echo
+    echo "$prog:"
+    echo -e "\tFailed to merge $remote_branch due to conflicts."
+    echo -e "\tEither solve conflicts, commit merge and do the fixup-merge yourself"
+    echo -e "\tor do \"git merge --abort\" to get back where you started."
+    exit 1
+fi
+
+
+# Fixup merge
+git reset --soft $remote_branch
+git update-ref MERGE_HEAD $old_theirs
+git commit --reuse-message=$old_head
