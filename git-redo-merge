@@ -62,9 +62,23 @@ if [ $? -ne 0 -o "$old_theirs" == "" ]; then
     exit 1
 fi
 
+if git rev-parse --verify --quiet HEAD^3; then
+    echo "$prog ERROR: HEAD is an octopus merge."
+    exit 1
+fi
 
 if ! git merge-base --is-ancestor $old_ours $remote_branch; then
     echo "$prog ERROR: First parent HEAD^1 is not an ancestor of $remote_branch."
+    exit 1
+fi
+
+if git merge-base --is-ancestor $remote_branch $curr_branch; then
+    echo "$prog ERROR: $remote_branch is reachable from $curr_branch. They have not diverged."
+    exit 1
+fi
+
+if git merge-base --is-ancestor $curr_branch $remote_branch; then
+    echo "$prog ERROR: $curr_branch is reachable from $remote_branch. They have not diverged."
     exit 1
 fi
 
