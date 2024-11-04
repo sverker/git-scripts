@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 
-# Delete branches merged to master
+# Delete merged branches
 
 local="no"
 remote="no"
 help="yes"
+mergedinto="master"
+dryrun="no"
 
 while (( "$#" )); do
 
@@ -16,6 +18,12 @@ while (( "$#" )); do
 	remote="$2"
 	help="no"
 	shift 2
+    elif [ "$1" == "-c" ] && [ x"$2" != x ]; then
+	mergedinto="$2"
+	shift 2
+    elif [ "$1" == "-d" ]; then
+	dryrun="yes"
+	shift
     else
 	help="yes"
 	break;
@@ -24,44 +32,54 @@ done
 
 if [ $help == "yes" ]; then
     echo
-    echo "Delete branches merged to master"
+    echo "Delete merged branches"
     echo
-    echo "Syntax: git-delete-merged-branches [-l] [-r remote]"
+    echo "Syntax: git-delete-merged-branches [-l] [-r remote] [-c commit]"
     echo
-    echo "-l           Delete local branches"
-    echo "-r <remote>  Delete and push remote branches of <remote>"
+    echo "-c <commit>  Delete all branches reachable from <commit>. Default is master."
+    echo "-l           Delete local branches."
+    echo "-r <remote>  Delete and push remote branches of <remote>."
+    echo "-d           Dry run. Just print branches that would had been deleted."
     echo
 fi
 
 
-if [ $local == "yes" ]; then    
-    for x in `git branch --merged master | sed 's/^\*//g'`
+if [ $local == "yes" ]; then
+    for x in `git branch --merged $mergedinto | grep -v '^[*+]'`
     do
 	case "$x" in
 	    master | maint | maint-[0-9][0-9])
 		echo "Skipping $x"
 		;;
 	    *)
-		git branch -D $x
+		if [ $dryrun == "yes" ]; then
+		    echo "DRYRUN: git branch -D $x"
+		else
+		    git branch -D $x
+		fi
 		;;
 	esac
     done
 fi
 
-if [ $remote != "no" ]; then    
-    for x in `git branch -r --merged master | grep "^[[:space:]]*$remote/"`
+if [ $remote != "no" ]; then
+    for x in `git branch -r --merged $mergedinto --format="%(refname)" | grep "^refs/remotes/$remote/"`
     do
-	branch=${x#$remote/}
+	branch=${x#refs/remotes/$remote/}
 	case $branch in
-	    master | maint | maint-[0-9][0-9])
+	    HEAD | master | maint | maint-[0-9][0-9])
 		echo "Skipping $x"
 		;;
 	    *)
-		echo "Deleting remote branch $x"
-		if ! git push $remote :$branch; then
-		    # Branch did probably not exist at $remote
-		    # Delete local remote-tracking branch
-		    git branch -rD $x
+		if [ $dryrun == "yes" ]; then
+		    echo "DRYRUN: git push $remote :$branch"
+		else
+		    echo "Deleting remote branch $x"
+		    if ! git push $remote :$branch; then
+			# Branch did probably not exist at $remote
+			# Delete local remote-tracking branch
+			git branch -rD $x
+		    fi
 		fi
 		;;
 	esac
