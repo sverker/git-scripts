@@ -2,6 +2,10 @@
 
 # Refresh tracking branch from its remote repo
 
+RED_ON="\033[0;41m"
+RED_OFF="\033[0m"
+ERROR="${RED_ON}ERROR${RED_OFF}"
+
 while (( "$#" )); do
 
     if [ "$1" == "-q" ]; then
@@ -32,7 +36,7 @@ if [[ "$l_branch" = "" ]]; then
     l_branch=$curr_branch
 fi
 if [ "$l_branch" = "HEAD" ]; then
-    echo "ERROR: Detached head"
+    echo -e "$ERROR: Detached head"
     exit 1
 fi
 
@@ -40,7 +44,7 @@ fi
 remote="$(git config branch.$l_branch.remote)"
 
 if [ "$remote" == "" ]; then
-    echo "ERROR: Branch '$l_branch' is not tracking"
+    echo -e "$ERROR: Branch '$l_branch' is not tracking"
     exit 1
 fi
 
@@ -50,7 +54,7 @@ if [[ $full_r_branch =~ refs/heads/(.+) ]]; then
     r_branch=${BASH_REMATCH[1]}
     echo "'$l_branch' is tracking '$r_branch' at '$remote'"
 else
-    echo "ERROR: Unknown remote branch format: '$full_r_branch'"
+    echo -e "$ERROR: Unknown remote branch format: '$full_r_branch'"
     exit 1
 fi
 
@@ -58,7 +62,7 @@ if [ "$query_only" == "yes" ] ; then exit 1 ; fi
 
 echo "git fetch $remote $r_branch"
 if ! git fetch --no-tags $remote +$r_branch:refs/remotes/$remote/$r_branch ; then
-    echo "ERROR: Failed to fetch '$remote/$r_branch'"
+    echo -e "$ERROR: Failed to fetch '$remote/$r_branch'"
     exit 1
 fi
 
@@ -74,7 +78,7 @@ else
     # Other branch
     if ! git-is-merged $l_branch refs/remotes/$remote/$r_branch > /dev/null ; then
 	if [[ "$force_it" != "yes" ]]; then
-	    echo "ERROR: Cannot fast-forward '$l_branch' to '$remote/$r_branch'"
+	    echo -e "$ERROR: Cannot fast-forward '$l_branch' to '$remote/$r_branch'"
 	    exit 1
 	fi
 	method="branch -f"
